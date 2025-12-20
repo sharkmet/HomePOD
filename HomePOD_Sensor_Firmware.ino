@@ -1,3 +1,4 @@
+// Git test: Verify if commit captures this change
 /**
  * ============================================
  * HomePOD ESP32 Sensor Firmware

@@ -11,12 +11,13 @@
  #include <ArduinoJson.h>
  
  // ============================================
- // CONFIGURATION
+ // CONFIGURATION - UPDATE THIS!
  // ============================================
- #define WIFI_SSID "YOUR_WIFI_SSID"          // CHANGE ME
- #define WIFI_PASSWORD "YOUR_WIFI_PASSWORD"  // CHANGE ME
- #define RASPBERRY_PI_IP "192.168.1.100"     // CHANGE ME
- #define DEVICE_NAME "HomePOD-Env-Node"
+#define WIFI_SSID "Netgear 2006"           // Change to your WiFi name
+#define WIFI_PASSWORD "woaiPDMS59"   // Change to your WiFi password
+#define RASPBERRY_PI_IP "10.0.0.47"      // Change to your Raspberry Pi IP address
+#define RASPBERRY_PI_PORT 5000  
+#define DEVICE_NAME "gurt"
  
  // PINS & SETTINGS
  #define MIC_PIN 35
@@ -25,8 +26,7 @@
  
  #define AUDIO_SAMPLES 64
  #define AUDIO_NOISE_FLOOR 100
- #define SENSOR_READ_INTERVAL 2000
- #define WIFI_SEND_INTERVAL 10000
+ #define WIFI_SEND_INTERVAL 10000 // Send data every 10 seconds
  
  // ============================================
  // SENSOR CLASSES
@@ -108,7 +108,7 @@
  };
  
  // ============================================
- // GLOBAL OBJECTS & VARIABLES
+ // GLOBAL OBJECTS
  // ============================================
  DHTSensor dhtSensor;
  MicrophoneSensor micSensor;
@@ -132,15 +132,19 @@
      }
  
      HTTPClient http;
+     // URL for the Python Flask Server
      String url = "http://" + String(RASPBERRY_PI_IP) + ":5000/sensor-data";
+     
      http.begin(url);
      http.addHeader("Content-Type", "application/json");
  
+     // Match JSON structure to Python script
      StaticJsonDocument<256> doc;
-     doc["device"] = DEVICE_NAME;
+     doc["device_name"] = DEVICE_NAME; // Changed from 'device'
+     
      JsonObject s = doc.createNestedObject("sensors");
-     s["temperature"] = temp;
-     s["humidity"] = hum;
+     s["temperature"] = temp;          // Changed from 'temp'
+     s["humidity"] = hum;              // Changed from 'hum'
      s["audio_peak"] = audioPeak;
  
      String jsonString;
@@ -154,7 +158,7 @@
  }
  
  // ============================================
- // MAIN SETUP & LOOP
+ // MAIN LOOP
  // ============================================
  void setup() {
      Serial.begin(115200);

@@ -1,56 +1,36 @@
 /**
  * ============================================
- * HomePOD ESP32 Environmental & Audio Firmware
+ * HomePOD ESP32 Env Node (DHT22 + Mic)
+ * Records data and sends JSON to Raspberry Pi
  * ============================================
- * REQUIRED ARDUINO IDE LIBRARIES:
- * 1. DHT sensor library by Adafruit (v1.4.6+)
- * 2. Adafruit Unified Sensor by Adafruit (v1.1.14+)
  */
-
  #include <Arduino.h>
  #include <DHT.h>
+ #include <WiFi.h>
+ #include <HTTPClient.h>
+ #include <ArduinoJson.h>
  
- // PIN DEFINITIONS
- #define MIC_PIN 35          // MAX4466 Microphone on GPIO35 (ADC1_CH7)
- #define DHT_PIN 4           // DHT22 on GPIO4
+ // ============================================
+ // CONFIGURATION
+ // ============================================
+ #define WIFI_SSID "YOUR_WIFI_SSID"          // CHANGE ME
+ #define WIFI_PASSWORD "YOUR_WIFI_PASSWORD"  // CHANGE ME
+ #define RASPBERRY_PI_IP "192.168.1.100"     // CHANGE ME
+ #define DEVICE_NAME "HomePOD-Env-Node"
  
- // SENSOR CONFIGURATION
- #define DHT_TYPE DHT22      
- #define TEMP_MIN -40.0f
- #define TEMP_MAX 80.0f
- #define HUMIDITY_MIN 0.0f
- #define HUMIDITY_MAX 100.0f
+ // PINS & SETTINGS
+ #define MIC_PIN 35
+ #define DHT_PIN 4
+ #define DHT_TYPE DHT22
  
  #define AUDIO_SAMPLES 64
  #define AUDIO_NOISE_FLOOR 100
+ #define SENSOR_READ_INTERVAL 2000
+ #define WIFI_SEND_INTERVAL 10000
  
- #define SENSOR_READ_INTERVAL 2000   
- #define AUDIO_SAMPLE_INTERVAL 100   
- 
- // DATA STRUCTURES
- struct DHTReading {
-     float temperature;
-     float humidity;
-     float heatIndex;
-     bool isValid;
- };
- 
- struct AudioReading {
-     int level;
-     int peak;
-     int average;
-     bool isValid;
- };
- 
- struct SensorData {
-     float temperature;
-     float humidity;
-     int audioLevel;
-     int audioPeak;
-     bool isValid;
- };
- 
- // DHT SENSOR CLASS
+ // ============================================
+ // SENSOR CLASSES
+ // ============================================
  class DHTSensor {
  private:
      DHT* _dht;
@@ -60,140 +40,151 @@
  
      bool validateReading(float temp, float humidity) {
          if (isnan(temp) || isnan(humidity)) return false;
-         if (temp < TEMP_MIN || temp > TEMP_MAX) return false;
-         if (humidity < HUMIDITY_MIN || humidity > HUMIDITY_MAX) return false;
+         if (temp < -40 || temp > 80) return false;
+         if (humidity < 0 || humidity > 100) return false;
          return true;
      }
  
  public:
      DHTSensor() : _dht(nullptr), _lastTemp(0.0f), _lastHumidity(0.0f), _initialized(false) {}
  
-     bool begin() {
+     void begin() {
          _dht = new DHT(DHT_PIN, DHT_TYPE);
-         if (_dht == nullptr) return false;
          _dht->begin();
-         delay(2000);
-         float temp = _dht->readTemperature();
-         float humidity = _dht->readHumidity();
-         _initialized = !isnan(temp) && !isnan(humidity);
-         if (_initialized) {
-             _lastTemp = temp;
-             _lastHumidity = humidity;
-         }
-         return _initialized;
+         delay(2000); // Warmup
+         _initialized = true;
      }
  
-     DHTReading read() {
-         DHTReading reading;
-         reading.isValid = false;
-         if (!_initialized || _dht == nullptr) return reading;
+     bool read(float &temp, float &hum) {
+         if (!_initialized) return false;
+         float t = _dht->readTemperature();
+         float h = _dht->readHumidity();
  
-         float temp = _dht->readTemperature();
-         float humidity = _dht->readHumidity();
- 
-         if (validateReading(temp, humidity)) {
-             reading.temperature = temp;
-             reading.humidity = humidity;
-             reading.heatIndex = _dht->computeHeatIndex(temp, humidity, false);
-             reading.isValid = true;
-             _lastTemp = temp;
-             _lastHumidity = humidity;
-         } else {
-             reading.temperature = _lastTemp;
-             reading.humidity = _lastHumidity;
-             reading.heatIndex = _dht->computeHeatIndex(_lastTemp, _lastHumidity, false);
+         if (validateReading(t, h)) {
+             temp = _lastTemp = t;
+             hum = _lastHumidity = h;
+             return true;
          }
-         return reading;
+         return false;
      }
  };
  
- // MICROPHONE SENSOR CLASS
  class MicrophoneSensor {
  private:
      int _peakLevel;
-     long _runningSum;
-     int _sampleCount;
- 
-     void sampleAudio(int& minVal, int& maxVal, int& avgVal) {
-         minVal = 4095; maxVal = 0; long sum = 0;
-         for (int i = 0; i < AUDIO_SAMPLES; i++) {
-             int sample = analogRead(MIC_PIN);
-             if (sample < minVal) minVal = sample;
-             if (sample > maxVal) maxVal = sample;
-             sum += sample;
-             delayMicroseconds(100);
-         }
-         avgVal = sum / AUDIO_SAMPLES;
-     }
  
  public:
-     MicrophoneSensor() : _peakLevel(0), _runningSum(0), _sampleCount(0) {}
+     MicrophoneSensor() : _peakLevel(0) {}
  
-     bool begin() {
+     void begin() {
          analogReadResolution(12);
          analogSetAttenuation(ADC_11db);
-         return (analogRead(MIC_PIN) >= 0);
      }
  
-     AudioReading read() {
-         AudioReading reading;
-         int minVal, maxVal, avgVal;
-         sampleAudio(minVal, maxVal, avgVal);
+     void sample() {
+         int minVal = 4095;
+         int maxVal = 0;
+         
+         // Fast sampling loop
+         for (int i = 0; i < AUDIO_SAMPLES; i++) {
+             int val = analogRead(MIC_PIN);
+             if (val < minVal) minVal = val;
+             if (val > maxVal) maxVal = val;
+         }
+ 
          int peakToPeak = maxVal - minVal;
+         // Noise floor correction
          if (peakToPeak < AUDIO_NOISE_FLOOR) peakToPeak = 0;
          else peakToPeak -= AUDIO_NOISE_FLOOR;
  
          if (peakToPeak > _peakLevel) _peakLevel = peakToPeak;
-         _runningSum += peakToPeak;
-         _sampleCount++;
- 
-         reading.level = peakToPeak;
-         reading.peak = _peakLevel;
-         reading.average = (_sampleCount > 0) ? (_runningSum / _sampleCount) : 0;
-         reading.isValid = true;
-         return reading;
      }
  
-     void resetPeak() { _peakLevel = 0; _runningSum = 0; _sampleCount = 0; }
+     int getPeakAndReset() {
+         int p = _peakLevel;
+         _peakLevel = 0;
+         return p;
+     }
  };
  
- // GLOBAL OBJECTS
- MicrophoneSensor micSensor;
+ // ============================================
+ // GLOBAL OBJECTS & VARIABLES
+ // ============================================
  DHTSensor dhtSensor;
- SensorData sensorData;
- unsigned long lastSensorRead = 0;
- unsigned long lastAudioSample = 0;
+ MicrophoneSensor micSensor;
+ unsigned long lastSend = 0;
+ unsigned long lastSample = 0;
  
+ void connectWiFi() {
+     Serial.print("Connecting to WiFi");
+     WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
+     while (WiFi.status() != WL_CONNECTED) {
+         delay(500);
+         Serial.print(".");
+     }
+     Serial.println("\nWiFi Connected!");
+ }
+ 
+ void sendData(float temp, float hum, int audioPeak) {
+     if (WiFi.status() != WL_CONNECTED) {
+         Serial.println("WiFi Disconnected. Reconnecting...");
+         connectWiFi();
+     }
+ 
+     HTTPClient http;
+     String url = "http://" + String(RASPBERRY_PI_IP) + ":5000/sensor-data";
+     http.begin(url);
+     http.addHeader("Content-Type", "application/json");
+ 
+     StaticJsonDocument<256> doc;
+     doc["device"] = DEVICE_NAME;
+     JsonObject s = doc.createNestedObject("sensors");
+     s["temperature"] = temp;
+     s["humidity"] = hum;
+     s["audio_peak"] = audioPeak;
+ 
+     String jsonString;
+     serializeJson(doc, jsonString);
+     
+     int responseCode = http.POST(jsonString);
+     if (responseCode > 0) Serial.printf("Sent Data (Code %d)\n", responseCode);
+     else Serial.printf("Error Sending: %s\n", http.errorToString(responseCode).c_str());
+     
+     http.end();
+ }
+ 
+ // ============================================
+ // MAIN SETUP & LOOP
+ // ============================================
  void setup() {
      Serial.begin(115200);
-     delay(1000);
-     Serial.println("\nHomePOD Environmental Node Initialized");
- 
-     if (micSensor.begin()) Serial.printf("  [OK] Mic on GPIO%d\n", MIC_PIN);
-     if (dhtSensor.begin()) Serial.printf("  [OK] DHT on GPIO%d\n", DHT_PIN);
+     dhtSensor.begin();
+     micSensor.begin();
+     connectWiFi();
+     Serial.println("Env Node Initialized");
  }
  
  void loop() {
      unsigned long currentMillis = millis();
  
-     if (currentMillis - lastAudioSample >= AUDIO_SAMPLE_INTERVAL) {
-         lastAudioSample = currentMillis;
-         AudioReading audio = micSensor.read();
-         sensorData.audioLevel = audio.level;
-         sensorData.audioPeak = audio.peak;
+     // 1. High Frequency Audio Sampling (Every 100ms)
+     if (currentMillis - lastSample >= 100) {
+         lastSample = currentMillis;
+         micSensor.sample();
      }
  
-     if (currentMillis - lastSensorRead >= SENSOR_READ_INTERVAL) {
-         lastSensorRead = currentMillis;
-         DHTReading dht = dhtSensor.read();
-         if (dht.isValid) {
-             sensorData.temperature = dht.temperature;
-             sensorData.humidity = dht.humidity;
-         }
- 
-         Serial.printf("Temp: %.1fC | Hum: %.1f%% | Audio Peak: %d\n", 
-                       sensorData.temperature, sensorData.humidity, sensorData.audioPeak);
+     // 2. Data Reporting (Every 10s)
+     if (currentMillis - lastSend >= WIFI_SEND_INTERVAL) {
+         lastSend = currentMillis;
          
-         micSensor.resetPeak();
+         float t, h;
+         if (dhtSensor.read(t, h)) {
+             int peak = micSensor.getPeakAndReset();
+             
+             Serial.printf("Temp: %.1f C | Hum: %.1f %% | Audio Peak: %d\n", t, h, peak);
+             sendData(t, h, peak);
+         } else {
+             Serial.println("Failed to read DHT sensor!");
+         }
      }
  }

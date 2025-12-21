@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 HomePOD Sensor Server v2
-- Combines all nodes into a single dashboard
+- Groups multiple nodes into logical rooms
 - Interprets raw sensor values into human-readable levels
 - Dynamically displays only available sensor data
 """
@@ -14,6 +14,15 @@ app = Flask(__name__)
 
 DATA_LOG_FILE = "sensor_data_v2.log"
 latest_readings = {}
+
+# ============================================
+# ROOM CONFIGURATION
+# Map device names to rooms. Devices in the same room are merged.
+# ============================================
+ROOM_CONFIG = {
+    "Bedroom": ["HomePOD_Env_Node", "HomePOD_Light_Node"],
+    "Living Room": ["HomePOD_Env_Node_2"],
+}
 
 # ============================================
 # SENSOR INTERPRETATION FUNCTIONS
@@ -39,6 +48,38 @@ def interpret_light(lux):
         return "Bright"
     else:
         return "Very Bright"
+
+def get_room_data():
+    """Merge sensor data from all devices in each room"""
+    rooms = {}
+    
+    for room_name, device_list in ROOM_CONFIG.items():
+        merged_sensors = {}
+        latest_timestamp = None
+        
+        for device_name in device_list:
+            if device_name in latest_readings:
+                device_data = latest_readings[device_name]
+                sensors = device_data.get('sensors', {})
+                timestamp = device_data.get('received_at')
+                
+                # Merge sensors (later devices overwrite if duplicate keys)
+                for key, value in sensors.items():
+                    if value is not None:
+                        merged_sensors[key] = value
+                
+                # Track latest timestamp
+                if timestamp:
+                    if latest_timestamp is None or timestamp > latest_timestamp:
+                        latest_timestamp = timestamp
+        
+        if merged_sensors:
+            rooms[room_name] = {
+                'sensors': merged_sensors,
+                'received_at': latest_timestamp
+            }
+    
+    return rooms
 
 # ============================================
 # WEB ROUTES
@@ -136,14 +177,16 @@ def home():
         <div class="grid">
     """
 
-    if latest_readings:
-        for device_name, data in latest_readings.items():
+    rooms = get_room_data()
+    
+    if rooms:
+        for room_name, data in rooms.items():
             sensors = data.get('sensors', {})
             timestamp = data.get('received_at', 'Unknown')
 
             html += f"""
             <div class="card">
-                <h3>{device_name}</h3>
+                <h3>{room_name}</h3>
                 <p class="timestamp">Last updated: {timestamp}</p>
             """
 
@@ -231,13 +274,16 @@ def receive_sensor_data():
 
 @app.route('/latest', methods=['GET'])
 def get_latest_data():
-    return jsonify(latest_readings), 200
+    return jsonify(get_room_data()), 200
 
 if __name__ == '__main__':
     print("\n" + "="*50)
     print("  HomePOD Server v2")
-    print("  Dynamic Display + Interpreted Levels")
+    print("  Room-Based Grouping + Interpreted Levels")
     print("="*50)
+    print("\nRoom Configuration:")
+    for room, devices in ROOM_CONFIG.items():
+        print(f"  {room}: {', '.join(devices)}")
     print("\nAccess dashboard at: http://<your-pi-ip>:5000")
     print("Press Ctrl+C to stop\n")
     app.run(host='0.0.0.0', port=5000, debug=False)

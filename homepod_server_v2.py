@@ -12,11 +12,32 @@ from datetime import datetime
 import json
 import requests
 import time
+import os
+import uuid
 
 app = Flask(__name__)
 
 DATA_LOG_FILE = "sensor_data_v2.log"
+TODO_FILE = "todo_data.json"
 latest_readings = {}
+
+# ============================================
+# TO-DO LIST STORAGE
+# ============================================
+def load_todos():
+    if os.path.exists(TODO_FILE):
+        try:
+            with open(TODO_FILE, 'r') as f:
+                return json.load(f)
+        except:
+            return []
+    return []
+
+def save_todos(todos):
+    with open(TODO_FILE, 'w') as f:
+        json.dump(todos, f)
+
+todo_list = load_todos()
 
 # ============================================
 # WEATHER CONFIGURATION
@@ -139,11 +160,13 @@ def fetch_weather():
 # ============================================
 def get_base_styles():
     return """
+    <meta charset="UTF-8">
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Color+Emoji&display=swap">
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; }
         html { font-size: 18px; }
         body {
-            font-family: 'Segoe UI', -apple-system, Arial, sans-serif;
+            font-family: 'Segoe UI', -apple-system, Arial, sans-serif, 'Noto Color Emoji';
             background: linear-gradient(135deg, #0f0f1a 0%, #1a1a2e 50%, #16213e 100%);
             min-height: 100vh;
             color: #eee;
@@ -151,6 +174,16 @@ def get_base_styles():
             -webkit-tap-highlight-color: rgba(0,217,255,0.3);
             user-select: none;
             -webkit-user-select: none;
+        }
+        .section-title {
+            font-size: 1rem;
+            color: #888;
+            margin: 24px 0 12px 0;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+        .card-icon-small {
+            font-size: 1.8rem;
         }
         
         /* Header */
@@ -419,7 +452,7 @@ def home():
         <title>HomePOD Dashboard</title>
         {get_base_styles()}
         <script>
-            setTimeout(() => location.reload(), 30000);
+            setTimeout(() => location.reload(), 10000);
         </script>
     </head>
     <body>
@@ -432,8 +465,8 @@ def home():
         </div>
         
         <div class="grid">
-            <!-- Weather Card -->
-            <a href="/weather" class="card large">
+            <!-- Weather Card (smaller) -->
+            <a href="/weather" class="card">
                 <div class="card-header">
                     <div>
                         <div class="card-title">Weather · {WEATHER_CITY}</div>
@@ -441,10 +474,28 @@ def home():
                         <div class="card-subtitle">{weather_condition}</div>
                     </div>
                     <div>
-                        <span class="card-icon">{weather_icon}</span>
+                        <span class="card-icon-small">{weather_icon}</span>
                     </div>
                 </div>
             </a>
+            
+            <!-- To-Do Card -->
+            <a href="/todo" class="card">
+                <div class="card-header">
+                    <div>
+                        <div class="card-title">To-Do List</div>
+                        <div class="card-value" style="font-size: 1.8rem;">Tasks</div>
+                        <div class="card-subtitle">Tap to manage</div>
+                    </div>
+                    <div>
+                        <span class="card-icon-small">📝</span>
+                    </div>
+                </div>
+            </a>
+        </div>
+        
+        <div class="section-title">Rooms</div>
+        <div class="grid">
     """
     
     # Room Cards
@@ -724,6 +775,174 @@ def get_weather_api():
         'current': weather_data,
         'forecast': forecast_data
     }), 200
+
+# ============================================
+# TO-DO LIST ROUTES
+# ============================================
+@app.route('/todo')
+def todo_page():
+    global todo_list
+    
+    # Build todo items HTML
+    items_html = ""
+    for item in todo_list:
+        completed_class = "completed" if item.get('done') else ""
+        check_icon = "✓" if item.get('done') else "○"
+        items_html += f"""
+            <div class="todo-item {completed_class}" data-id="{item['id']}">
+                <form method="POST" action="/todo/toggle/{item['id']}" style="display:inline;">
+                    <button type="submit" class="todo-check">{check_icon}</button>
+                </form>
+                <span class="todo-text">{item['text']}</span>
+                <form method="POST" action="/todo/delete/{item['id']}" style="display:inline;">
+                    <button type="submit" class="todo-delete">✕</button>
+                </form>
+            </div>
+        """
+    
+    if not todo_list:
+        items_html = '<div class="no-data">No tasks yet. Add one above!</div>'
+    
+    html = f"""
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <title>To-Do - HomePOD</title>
+        {get_base_styles()}
+        <style>
+            .todo-input-container {{
+                display: flex;
+                gap: 12px;
+                margin-bottom: 24px;
+            }}
+            .todo-input {{
+                flex: 1;
+                padding: 16px 20px;
+                font-size: 1.1rem;
+                border: none;
+                border-radius: 16px;
+                background: rgba(255,255,255,0.1);
+                color: #fff;
+                outline: none;
+            }}
+            .todo-input::placeholder {{
+                color: #666;
+            }}
+            .todo-add-btn {{
+                padding: 16px 28px;
+                font-size: 1.1rem;
+                border: none;
+                border-radius: 16px;
+                background: linear-gradient(135deg, #00d9ff, #00ff88);
+                color: #000;
+                font-weight: 600;
+                cursor: pointer;
+            }}
+            .todo-add-btn:active {{
+                transform: scale(0.95);
+            }}
+            .todo-item {{
+                display: flex;
+                align-items: center;
+                gap: 16px;
+                padding: 20px;
+                background: rgba(255,255,255,0.05);
+                border-radius: 16px;
+                margin-bottom: 12px;
+                transition: all 0.2s;
+            }}
+            .todo-item.completed {{
+                opacity: 0.5;
+            }}
+            .todo-item.completed .todo-text {{
+                text-decoration: line-through;
+            }}
+            .todo-check {{
+                width: 44px;
+                height: 44px;
+                border: 2px solid #00d9ff;
+                border-radius: 50%;
+                background: transparent;
+                color: #00ff88;
+                font-size: 1.4rem;
+                cursor: pointer;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+            }}
+            .todo-check:active {{
+                background: rgba(0,217,255,0.3);
+            }}
+            .todo-text {{
+                flex: 1;
+                font-size: 1.2rem;
+                color: #fff;
+            }}
+            .todo-delete {{
+                width: 44px;
+                height: 44px;
+                border: none;
+                border-radius: 50%;
+                background: rgba(255,100,100,0.2);
+                color: #ff6464;
+                font-size: 1.2rem;
+                cursor: pointer;
+            }}
+            .todo-delete:active {{
+                background: rgba(255,100,100,0.4);
+            }}
+        </style>
+    </head>
+    <body>
+        <div class="header">
+            <a href="/" class="back-btn">←</a>
+            <div class="page-title">📝 To-Do List</div>
+            <div style="width: 60px;"></div>
+        </div>
+        
+        <div class="detail-card">
+            <form method="POST" action="/todo/add" class="todo-input-container">
+                <input type="text" name="text" class="todo-input" placeholder="Add a new task..." autocomplete="off" required>
+                <button type="submit" class="todo-add-btn">Add</button>
+            </form>
+            
+            {items_html}
+        </div>
+    </body>
+    </html>
+    """
+    return html
+
+@app.route('/todo/add', methods=['POST'])
+def todo_add():
+    global todo_list
+    text = request.form.get('text', '').strip()
+    if text:
+        todo_list.append({
+            'id': str(uuid.uuid4())[:8],
+            'text': text,
+            'done': False
+        })
+        save_todos(todo_list)
+    return '<script>window.location.href="/todo";</script>'
+
+@app.route('/todo/toggle/<item_id>', methods=['POST'])
+def todo_toggle(item_id):
+    global todo_list
+    for item in todo_list:
+        if item['id'] == item_id:
+            item['done'] = not item['done']
+            break
+    save_todos(todo_list)
+    return '<script>window.location.href="/todo";</script>'
+
+@app.route('/todo/delete/<item_id>', methods=['POST'])
+def todo_delete(item_id):
+    global todo_list
+    todo_list = [item for item in todo_list if item['id'] != item_id]
+    save_todos(todo_list)
+    return '<script>window.location.href="/todo";</script>'
+
 
 if __name__ == '__main__':
     print("\n" + "="*50)

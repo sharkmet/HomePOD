@@ -335,7 +335,7 @@ This project is open source and available for personal and educational use.
 
 ## Credits
 
-**Author**: Gary S (Libola)
+**Authors**: Ryan Li, Gary Sun, Ryan Wang, Ryan Giang
 **Repository**: [https://github.com/sharkmet/HomePOD](https://github.com/sharkmet/HomePOD)
 
 ## Support

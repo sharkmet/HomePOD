@@ -163,10 +163,56 @@ Audio Level: 120 (Peak: 450)
 Access the dashboard at `http://<raspberry-pi-ip>:5000`
 
 Features:
-- Real-time sensor readings
-- Auto-refresh every 5 seconds
-- Historical data logging
+- **Touch-friendly UI** optimized for 7-inch HDMI displays
+- **Real-time sensor readings** with 10-second auto-refresh
+- **Weather integration** with OpenWeatherMap (current + 5-day forecast)
+- **To-Do List** with add, complete, and delete functionality (persistent storage)
+- **Room grouping** for organizing multiple sensor nodes
+- **Emoji icons** for visual room/weather identification
 - JSON API endpoints
+
+### Kiosk Mode Setup (Raspberry Pi)
+
+To run the dashboard in full-screen kiosk mode on boot:
+
+1. Install emoji font support:
+   ```bash
+   sudo apt install fonts-noto-color-emoji -y
+   ```
+
+2. Create autostart entry:
+   ```bash
+   sudo nano ~/.config/lxsession/LXDE-pi/autostart
+   ```
+   Add:
+   ```
+   @xset s off
+   @xset -dpms
+   @chromium-browser --kiosk --noerrdialogs http://localhost:5000
+   ```
+
+3. Set up server to start on boot:
+   ```bash
+   sudo nano /etc/systemd/system/homepod.service
+   ```
+   Add:
+   ```ini
+   [Unit]
+   Description=HomePOD Dashboard Server
+   After=network.target
+
+   [Service]
+   ExecStart=/usr/bin/python3 /home/pi/HomePOD/homepod_server_v2.py
+   WorkingDirectory=/home/pi/HomePOD
+   User=pi
+   Restart=always
+
+   [Install]
+   WantedBy=multi-user.target
+   ```
+   Enable: `sudo systemctl enable homepod.service`
+
+4. Reboot: `sudo reboot`
 
 ## API Endpoints (WiFi Version)
 

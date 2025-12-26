@@ -42,7 +42,7 @@ todo_list = load_todos()
 # ============================================
 # WEATHER CONFIGURATION
 # ============================================
-WEATHER_API_KEY = "f8750f0d79a614efa7c0bb4a4272c311"
+WEATHER_API_KEY = "key"
 WEATHER_CITY = "Calgary"
 WEATHER_COUNTRY = "CA"
 WEATHER_UNITS = "metric"  # Use "imperial" for Fahrenheit

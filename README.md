@@ -1,24 +1,32 @@
 # HomePOD - ESP32 Environmental Monitoring System
 
-A comprehensive IoT sensor platform built on ESP32 for monitoring temperature, humidity, light levels, and ambient sound in your home or office.
+A comprehensive IoT sensor platform built on ESP32 for monitoring temperature, humidity, light levels, and ambient sound in your home or office. The system features ESP32 sensor nodes that transmit data to a central Raspberry Pi server with a 7-inch touchscreen display.
 
 ## Features
 
 - **Multi-Sensor Support**: Temperature, humidity, light intensity, and audio level monitoring
-- **WiFi Connectivity**: Send sensor data to a Raspberry Pi server via HTTP
-- **Real-Time Dashboard**: Web-based interface for live monitoring
+- **WiFi Connectivity**: Send sensor data from multiple ESP32 nodes to a Raspberry Pi server via HTTP
+- **Centralized Dashboard**: Raspberry Pi with 7-inch display running touch-friendly web interface
+- **Multiple Device Support**: Monitor sensors from different rooms on a single display
+- **Real-Time Updates**: Live sensor readings with 10-second auto-refresh
 - **Data Logging**: Automatic logging of all sensor readings
 - **Modular Architecture**: Separate firmware options for different sensor configurations
 - **Arduino IDE Compatible**: Easy to flash and modify
 
 ## Hardware Requirements
 
-### ESP32 Module
-- ESP32-D Development Board
+### ESP32 Sensor Nodes
+- ESP32-D Development Board (one or more)
 - 4MB Flash Memory
 - WiFi 2.4GHz capability
 
-### Sensors
+### Raspberry Pi Display Server
+- Raspberry Pi 3B+ or 4
+- 7-inch HDMI touchscreen display
+- MicroSD card (16GB+)
+- Power supply
+
+### Sensors (per ESP32 node)
 - **DHT22** - Temperature and Humidity Sensor (GPIO4)
 - **BH1750** - Digital Light Sensor (I2C: SDA=GPIO21, SCL=GPIO22)
 - **MAX4466** - Electret Microphone Amplifier (GPIO35)
@@ -48,10 +56,12 @@ Install these libraries via Arduino IDE Library Manager:
 3. **BH1750** by Christopher Laws (v1.3.0+)
 4. **ArduinoJson** by Benoit Blanchon (v6.21.0+) _(for WiFi version only)_
 
-### Raspberry Pi (Optional - for WiFi version)
+### Raspberry Pi Display Server
 
+- Raspberry Pi OS (Bullseye or later)
 - Python 3.x
 - Flask (`pip3 install flask`)
+- Chromium browser (for kiosk mode)
 
 ## Available Firmware Options
 
@@ -159,17 +169,23 @@ Audio Level: 120 (Peak: 450)
 ================================
 ```
 
-### Web Dashboard (WiFi Version)
-Access the dashboard at `http://<raspberry-pi-ip>:5000`
+### Raspberry Pi Dashboard
+The Raspberry Pi server receives data from all ESP32 sensor nodes and displays it on a 7-inch touchscreen. Access the dashboard at `http://<raspberry-pi-ip>:5000` or `http://localhost:5000` on the Pi itself.
 
 Features:
 - **Touch-friendly UI** optimized for 7-inch HDMI displays
-- **Real-time sensor readings** with 10-second auto-refresh
-- **Weather integration** with OpenWeatherMap (current + 5-day forecast)
-- **To-Do List** with add, complete, and delete functionality (persistent storage)
+- **Real-time sensor readings** from multiple ESP32 nodes with 10-second auto-refresh
+- **Multiple built-in apps**:
+  - **Weather** - Current conditions and 5-day forecast with OpenWeatherMap integration
+  - **To-Do List** - Task management with add, complete, and delete functionality
+  - **Timers** - Multiple countdown timers with real-time updates and alerts
+  - **Notes** - Quick note-taking with timestamps
+  - **Music Player** - Queue management with playback controls
+  - **System Stats** - Raspberry Pi monitoring (CPU temp, usage, memory, disk, uptime)
+- **Persistent data storage** - all app data saves to JSON files
 - **Room grouping** for organizing multiple sensor nodes
 - **Emoji icons** for visual room/weather identification
-- JSON API endpoints
+- **JSON API endpoints** for integration with other systems
 
 ### Kiosk Mode Setup (Raspberry Pi)
 
@@ -202,7 +218,7 @@ To run the dashboard in full-screen kiosk mode on boot:
    After=network.target
 
    [Service]
-   ExecStart=/usr/bin/python3 /home/pi/HomePOD/homepod_server_v2.py
+   ExecStart=/usr/bin/python3 /home/pi/HomePOD/homepod_server_v3.py
    WorkingDirectory=/home/pi/HomePOD
    User=pi
    Restart=always
@@ -296,17 +312,25 @@ HomePOD/
 │   └── HomePOD_Env_Node.ino
 ├── HomePOD_Light_Node/                  # Light monitoring node
 │   └── HomePOD_Light_Node.ino
-├── raspberry_pi_server.py               # Python server for Raspberry Pi
+├── raspberry_pi_server.py               # Basic Python server
+├── homepod_server_v2.py                 # Enhanced server with weather & to-do
+├── homepod_server_v3.py                 # Full-featured server with multiple apps
 ├── WIFI_SETUP_GUIDE.md                  # WiFi setup instructions
 ├── src/                                 # PlatformIO source files
 ├── include/                             # PlatformIO headers
 └── README.md                            # This file
 ```
 
-## Advanced Features
+## System Architecture
+
+The HomePOD system consists of:
+
+1. **ESP32 Sensor Nodes**: One or more ESP32 devices with sensors placed in different rooms
+2. **Raspberry Pi Display Server**: Central server receiving data via WiFi and displaying on 7-inch touchscreen
+3. **Web Dashboard**: Touch-friendly interface with sensor readings and multiple productivity apps
 
 ### Multiple Device Support
-The WiFi version supports multiple ESP32 devices reporting to the same Raspberry Pi server. Each device should have a unique `DEVICE_NAME` configured in the firmware.
+The system supports multiple ESP32 sensor nodes reporting to the same Raspberry Pi server. Each device should have a unique `DEVICE_NAME` configured in the firmware to identify different rooms or locations.
 
 ### Auto-Start Server on Boot
 Configure the Raspberry Pi server to start automatically on boot using systemd. See [WIFI_SETUP_GUIDE.md](WIFI_SETUP_GUIDE.md) for instructions.

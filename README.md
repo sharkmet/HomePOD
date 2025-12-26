@@ -21,7 +21,7 @@ A comprehensive IoT sensor platform built on ESP32 for monitoring temperature, h
 - WiFi 2.4GHz capability
 
 ### Raspberry Pi Display Server
-- Raspberry Pi 3B+ or 4
+- Raspberry Pi 5
 - 7-inch HDMI touchscreen display
 - MicroSD card (16GB+)
 - Power supply
